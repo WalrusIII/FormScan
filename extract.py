@@ -14,6 +14,7 @@ import os
 import sys
 import json
 import base64
+import re
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
@@ -65,8 +66,18 @@ Return a JSON array. Each element is an object with:
   - "note": a short reason when confidence is not high (e.g. "ambiguous 1 vs 7"), else ""
 
 Rules:
-- Mark confidence "low" and needs_review true when handwriting is ambiguous,
-  partially obscured, or you had to guess between plausible readings.
+Rules:
+- BIAS TOWARD FLAGGING. This form is used in a medical context, where a missed
+  error causes a patient outreach and a delay in care, while an unnecessary review
+  costs only a few seconds. So it is far better to flag a correct field than to let
+  an unclear one through unflagged. When in doubt, flag it.
+- The key test: could a careful human plausibly read this field DIFFERENTLY than you
+  did? If yes, set needs_review true (confidence "medium" or "low") and put the other
+  plausible reading in "note" (e.g. "could be 1 or 7", "X falls between Male and Female").
+  This applies even if you are fairly sure of your reading.
+- Flag ambiguous marks specifically: a checkbox/radio mark placed between two options,
+  a stray or partial mark, or more than one option marked, must be flagged.
+- Only leave a field "high" confidence when the reading is genuinely unambiguous.
 - Leave value null for empty fields; do not invent data.
 - Return every field from the list, even blank ones.
 Return only the JSON array."""
@@ -86,21 +97,26 @@ def encode_image(path):
 
 
 def parse_model_json(text):
-    """Model *should* return clean JSON, but be defensive: strip code fences
-    and, if needed, slice from the first '[' to the last ']'."""
+    """Model *should* return clean JSON, but LLMs often add code fences,
+    stray prose, or trailing commas. Strip those, then parse."""
     t = text.strip()
+
+    # 1) strip ```json ... ``` fences if present
     if t.startswith("```"):
         t = t.split("```", 2)[1]
         if t.startswith("json"):
             t = t[4:]
         t = t.strip()
-    try:
-        return json.loads(t)
-    except json.JSONDecodeError:
-        start, end = t.find("["), t.rfind("]")
-        if start != -1 and end != -1:
-            return json.loads(t[start:end + 1])
-        raise
+
+    # 2) slice to the outermost [ ... ] in case of leading/trailing prose
+    start, end = t.find("["), t.rfind("]")
+    if start != -1 and end != -1:
+        t = t[start:end + 1]
+
+    # 3) remove trailing commas before } or ]  (the usual culprit)
+    t = re.sub(r",(\s*[}\]])", r"\1", t)
+
+    return json.loads(t)
 
 
 def extract_fields(image_path):
@@ -110,7 +126,7 @@ def extract_fields(image_path):
 
     message = client.messages.create(
         model=MODEL,
-        max_tokens=2000,
+        max_tokens=4000,
         system=SYSTEM,
         messages=[{
             "role": "user",
@@ -121,7 +137,13 @@ def extract_fields(image_path):
             ],
         }],
     )
-    raw = message.content[0].text
+
+    # Response may contain multiple blocks (e.g. a thinking block first);
+    # grab text only from the actual text block(s), don't assume position.
+    raw = "".join(block.text for block in message.content if block.type == "text")
+    print("----- RAW MODEL OUTPUT -----")
+    print(raw)
+    print("----- END RAW -----")
     return parse_model_json(raw)
 
 
