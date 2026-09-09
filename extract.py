@@ -25,7 +25,10 @@ client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 # is a working fallback.
 MODEL = "claude-sonnet-5"
 
-# ---- The known template: we control this form, so we hardcode its schema. ----
+# We control this form, so we hand the model its exact field list instead of
+# making it re-derive the layout from every photo. Giving it the "template" up
+# front means it spends its effort reading handwriting, not guessing structure
+# — which is both more accurate and cheaper.
 # (v2 idea: let a user upload a blank form to auto-register an unknown template.)
 EXPECTED_FIELDS = """
 Text fields (read the handwriting):
@@ -46,12 +49,19 @@ Multi-select field (report a list of the checked options, or [] if none):
   test_type         -> any of: Test 1A, Test 1B, Test 2A, Test 2B
 """.strip()
 
+# The system prompt sets the model's role and its hardest guardrail: never
+# invent data. The tool schema (below) enforces output format, so the prompt only concerns judgment.
 SYSTEM = (
     "You are a precise document data-extraction assistant. "
     "Return ONLY valid JSON, no prose or markdown. "
     "Never infer or auto-complete values that are not visibly written on the form."
 )
 
+# The prompt handles JUDGMENT only, what to extract and how to rate confidence.
+# The bias-toward-flagging rule is a deliberate domain choice: in a
+# medical context a missed error costs a patient outreach and a care delay, while
+# an extra review costs seconds, so the two error types are not equal, and we
+# tune toward over-flagging on purpose.
 PROMPT = f"""This image is a filled-in "Medical Order Form". Extract the values.
 
 Here are the exact fields on this form:
@@ -74,6 +84,10 @@ Rules:
 - Return every field from the list, even blank ones."""
 
 
+# This tool is the enforced output contract. Rather than asking for JSON as free
+# text and hoping it parses, we hand the API a schema and force the model to call
+# this tool, so the response comes back already structured and validated. That is
+# what eliminated the intermittent JSON parse failures (trailing commas, truncation).
 EXTRACTION_TOOL = {
     "name": "record_form_fields",
     "description": "Record every extracted field from the medical order form, "
@@ -114,6 +128,9 @@ EXTRACTION_TOOL = {
 }
 
 
+# The API needs the image's MIME type declared explicitly; we infer it from
+    # the file extension. An unknown extension returns None, which the caller
+    # treats as "unsupported" rather than sending a bad request.
 def media_type_for(path):
     ext = os.path.splitext(path)[1].lower()
     return {
@@ -122,6 +139,8 @@ def media_type_for(path):
     }.get(ext)
 
 
+# The vision API accepts image bytes as a base64 string inside the message,
+    # so we read the file and encode it here.
 def encode_image(path):
     with open(path, "rb") as f:
         return base64.standard_b64encode(f.read()).decode("utf-8")
@@ -137,6 +156,8 @@ def extract_fields(image_path):
         max_tokens=4000,
         system=SYSTEM,
         tools=[EXTRACTION_TOOL],
+        # tool_choice FORCES this specific tool call, so the model can't answer
+        # in free text, that's what makes structured output guaranteed, not likely.
         tool_choice={"type": "tool", "name": "record_form_fields"},
         messages=[{
             "role": "user",
@@ -148,11 +169,10 @@ def extract_fields(image_path):
         }],
     )
 
-    # Response may contain multiple blocks (e.g. a thinking block first);
-    # grab text only from the actual text block(s), don't assume position.
-
-    # With a forced tool call, the model's answer is a tool_use block whose
-    # .input is already a parsed Python dict — no JSON string to clean up.
+    # A response can contain several blocks (e.g. a thinking block before the
+    # answer), so we find the tool_use block by TYPE rather than assuming it's
+    # first. Its .input is already a parsed, schema-validated dict; no JSON
+    # string to clean up. The raise is a safety net if no tool call comes back.
     for block in message.content:
         if block.type == "tool_use":
             return block.input["fields"]
@@ -165,14 +185,21 @@ def display(results):
     print("\n{:<28}{:<22}{:<10}".format("FIELD", "VALUE", "CONFIDENCE"))
     print("-" * 62)
     for f in results:
+        # Normalize the three "empty" shapes (None, "", []) to one label so an
+        # unchecked multi-select reads the same as a blank text box.
         val = f.get("value")
         val = "(blank)" if val in (None, "", []) else str(val)
         conf = f.get("confidence", "?")
         flag = "  <-- REVIEW" if f.get("needs_review") else ""
+        # Values are truncated only to keep the table columns aligned in the
+        # terminal. The full value is still in the review summary below.
         print("{:<28}{:<22}{:<10}{}".format(
             f.get("field", "?")[:27], val[:21], conf, flag))
         if f.get("needs_review"):
             review.append(f)
+
+    # The review summary is the actual product of the tool: the short list a
+    # human should confirm, each with the model's reason for doubting it.
     if review:
         print("\nFields needing human review:")
         for f in review:
@@ -183,6 +210,7 @@ def display(results):
 
 
 if __name__ == "__main__":
+    # Take the image path from the command line; fall back to a default name.
     path = sys.argv[1] if len(sys.argv) > 1 else "form.jpg"
     if not os.path.exists(path):
         print(f"Image not found: {path}\nUsage: python extract.py path/to/form.jpg")
