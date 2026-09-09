@@ -2,6 +2,7 @@ import streamlit as st
 from extract import extract_from_bytes, MAX_IMAGE_MB
 from PIL import Image
 
+st.set_page_config(layout="wide", page_title="FormScan")
 
 st.title("FormScan — Handwritten Order Form Review")
 st.write(
@@ -44,40 +45,43 @@ if uploaded is not None:
             # Stash results in session_state so later re-runs (from editing)
             # don't trigger a fresh API call every time.
             st.session_state.results = extract_from_bytes(image_bytes, media_type)
+            st.session_state.form_image = uploaded.getvalue()
 
 # Outside the upload block: if we have results (from this run or a prior one),
 # show the review UI.
 if "results" in st.session_state:
     st.divider()
     st.subheader("Review extracted fields")
-    st.caption("Fields marked in yellow were flagged as uncertain. "
-               "Correct any value, then submit.")
 
-    for i, field in enumerate(st.session_state.results):
-        name = field["field"]
-        value = field["value"]
-        # test_type comes back as a list; show it as comma-joined text for editing.
-        if isinstance(value, list):
-            display_value = ", ".join(value)
-        else:
-            display_value = "" if value in (None, "") else str(value)
+    col_form, col_fields = st.columns([1.3, 1], gap="large")
 
-        if field["needs_review"]:
-            # Flagged: show why, and give an editable box to correct it.
-            st.markdown(f"⚠️ **{name}**")
-            if field.get("note"):
-                st.caption(field["note"])
-        else:
-            st.markdown(f"**{name}**")
+    with col_form:
+        # Fixed-height container -> the form stays put and scrolls on its own,
+        # so it doesn't disappear as you work down the fields on the right.
+        with st.container(height=700):
+            st.image(st.session_state.form_image, use_container_width=True)
 
-        # A stable, unique key per field so edits persist across re-runs.
-        st.text_input(
-            label=name,
-            value=display_value,
-            key=f"field_{i}",
-            label_visibility="collapsed",
-        )
-        st.divider()
+    with col_fields:
+        with st.container(height=700):
+            st.caption("🟡 medium confidence · 🔴 low confidence · verify against the form.")
+            for i, field in enumerate(st.session_state.results):
+                name = field["field"]
+                value = field["value"]
+                display_value = ", ".join(value) if isinstance(value, list) else (
+                    "" if value in (None, "") else str(value))
+
+                # Color-code by confidence level (your yellow/orange-red idea).
+                conf = field.get("confidence", "high")
+                if field["needs_review"]:
+                    icon = "🔴" if conf == "low" else "🟡"
+                    st.markdown(f"{icon} **{name}**")
+                    if field.get("note"):
+                        st.caption(field["note"])
+                else:
+                    st.markdown(f"**{name}**")
+
+                st.text_input(name, value=display_value, key=f"field_{i}",
+                            label_visibility="collapsed")
 
     if st.button("Confirm & save"):
         corrected = []

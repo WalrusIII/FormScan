@@ -20,6 +20,7 @@ from anthropic import Anthropic
 load_dotenv()
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
+# keep in sync with maxUploadSize in .streamlit/config.toml
 MAX_IMAGE_MB = 10   # reject files larger than this (cost/abuse guard)
 
 # Sonnet reads messy handwriting better than Haiku. If this string 404s,
