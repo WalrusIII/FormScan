@@ -20,6 +20,8 @@ from anthropic import Anthropic
 load_dotenv()
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
+MAX_IMAGE_MB = 10   # reject files larger than this (cost/abuse guard)
+
 # Sonnet reads messy handwriting better than Haiku. If this string 404s,
 # check the Models page in the API console; Haiku ("claude-haiku-4-5-20251001")
 # is a working fallback.
@@ -150,6 +152,14 @@ def extract_fields(image_path):
     media = media_type_for(image_path)
     if media is None:
         raise ValueError(f"Unsupported image type: {image_path} (use jpg/png/webp)")
+
+    # Size guard: reject oversized files before doing any work. Protects against
+    # runaway API cost and denial-of-service via huge uploads.
+    size_mb = os.path.getsize(image_path) / (1024 * 1024)
+    if size_mb > MAX_IMAGE_MB:
+        raise ValueError(
+            f"Image is {size_mb:.1f} MB, over the {MAX_IMAGE_MB} MB limit."
+        )
 
     message = client.messages.create(
         model=MODEL,
