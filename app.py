@@ -1,7 +1,7 @@
 import streamlit as st
+from extract import extract_from_bytes, MAX_IMAGE_MB
 from PIL import Image
 
-MAX_IMAGE_MB = 10
 
 st.title("FormScan — Handwritten Order Form Review")
 st.write(
@@ -35,4 +35,13 @@ if uploaded is not None:
     uploaded.seek(0)
 
     st.image(uploaded, caption=uploaded.name, width=400)
+    
+    if st.button("Extract fields"):
+        with st.spinner("Reading the form..."):
+            image_bytes = uploaded.getvalue()          # raw bytes of the upload
+            media_type = uploaded.type                 # e.g. "image/jpeg"
+            results = extract_from_bytes(image_bytes, media_type)
+        st.success(f"Extracted {len(results)} fields.")
+        st.json(results)   # temporary: dump raw results to confirm it works
+    
     st.write(f"**{uploaded.name}** — {size_mb * 1024:.0f} KB")

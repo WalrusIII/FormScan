@@ -143,12 +143,43 @@ def media_type_for(path):
 
 # The vision API accepts image bytes as a base64 string inside the message,
     # so we read the file and encode it here.
-def encode_image(path):
-    with open(path, "rb") as f:
-        return base64.standard_b64encode(f.read()).decode("utf-8")
+def encode_image_bytes(image_bytes):
+    # Encode raw image bytes (from a file OR an upload) as base64 for the API.
+    return base64.standard_b64encode(image_bytes).decode("utf-8")
+
+
+def extract_from_bytes(image_bytes, media_type):
+    """Core extraction: works with raw image bytes from any source."""
+    message = client.messages.create(
+        model=MODEL,
+        max_tokens=4000,
+        system=SYSTEM,
+        tools=[EXTRACTION_TOOL],
+        tool_choice={"type": "tool", "name": "record_form_fields"},
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": media_type,
+                    "data": encode_image_bytes(image_bytes)}},
+                {"type": "text", "text": PROMPT},
+            ],
+        }],
+    )
+
+    # A response can contain several blocks (e.g. a thinking block before the
+        # answer), so we find the tool_use block by TYPE rather than assuming it's
+        # first. Its .input is already a parsed, schema-validated dict; no JSON
+        # string to clean up. The raise is a safety net if no tool call comes back.
+    for block in message.content:
+        if block.type == "tool_use":
+            return block.input["fields"]
+    raise ValueError("Model did not return a tool call")
+
 
 
 def extract_fields(image_path):
+    """CLI entry point: read a file from disk, then extract from its bytes."""
     media = media_type_for(image_path)
     if media is None:
         raise ValueError(f"Unsupported image type: {image_path} (use jpg/png/webp)")
@@ -157,37 +188,11 @@ def extract_fields(image_path):
     # runaway API cost and denial-of-service via huge uploads.
     size_mb = os.path.getsize(image_path) / (1024 * 1024)
     if size_mb > MAX_IMAGE_MB:
-        raise ValueError(
-            f"Image is {size_mb:.1f} MB, over the {MAX_IMAGE_MB} MB limit."
-        )
+        raise ValueError(f"Image is {size_mb:.1f} MB, over the {MAX_IMAGE_MB} MB limit.")
 
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=4000,
-        system=SYSTEM,
-        tools=[EXTRACTION_TOOL],
-        # tool_choice FORCES this specific tool call, so the model can't answer
-        # in free text, that's what makes structured output guaranteed, not likely.
-        tool_choice={"type": "tool", "name": "record_form_fields"},
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {
-                    "type": "base64", "media_type": media, "data": encode_image(image_path)}},
-                {"type": "text", "text": PROMPT},
-            ],
-        }],
-    )
+    with open(image_path, "rb") as f:
+        return extract_from_bytes(f.read(), media)
 
-    # A response can contain several blocks (e.g. a thinking block before the
-    # answer), so we find the tool_use block by TYPE rather than assuming it's
-    # first. Its .input is already a parsed, schema-validated dict; no JSON
-    # string to clean up. The raise is a safety net if no tool call comes back.
-    for block in message.content:
-        if block.type == "tool_use":
-            return block.input["fields"]
-
-    raise ValueError("Model did not return a tool call")
 
 
 def display(results):
