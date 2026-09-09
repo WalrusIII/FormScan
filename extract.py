@@ -14,7 +14,6 @@ import os
 import sys
 import json
 import base64
-import re
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
@@ -58,14 +57,7 @@ PROMPT = f"""This image is a filled-in "Medical Order Form". Extract the values.
 Here are the exact fields on this form:
 {EXPECTED_FIELDS}
 
-Return a JSON array. Each element is an object with:
-  - "field": the field name from the list above
-  - "value": your best reading (string, or a list for test_type), or null if blank/illegible
-  - "confidence": "high" | "medium" | "low"
-  - "needs_review": true if a human should verify this field, otherwise false
-  - "note": a short reason when confidence is not high (e.g. "ambiguous 1 vs 7"), else ""
 
-Rules:
 Rules:
 - BIAS TOWARD FLAGGING. This form is used in a medical context, where a missed
   error causes a patient outreach and a delay in care, while an unnecessary review
@@ -79,8 +71,47 @@ Rules:
   a stray or partial mark, or more than one option marked, must be flagged.
 - Only leave a field "high" confidence when the reading is genuinely unambiguous.
 - Leave value null for empty fields; do not invent data.
-- Return every field from the list, even blank ones.
-Return only the JSON array."""
+- Return every field from the list, even blank ones."""
+
+
+EXTRACTION_TOOL = {
+    "name": "record_form_fields",
+    "description": "Record every extracted field from the medical order form, "
+                   "with a per-field confidence and review flag.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "fields": {
+                "type": "array",
+                "description": "One object per field on the form.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "field": {
+                            "type": "string",
+                            "description": "The field name from the schema."
+                        },
+                        "value": {
+                            "type": ["string", "array", "null"],
+                            "description": "Best reading; a list for test_type; null if blank/illegible."
+                        },
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["high", "medium", "low"]
+                        },
+                        "needs_review": {"type": "boolean"},
+                        "note": {
+                            "type": "string",
+                            "description": "Short reason when confidence is not high; else empty."
+                        }
+                    },
+                    "required": ["field", "value", "confidence", "needs_review", "note"]
+                }
+            }
+        },
+        "required": ["fields"]
+    }
+}
 
 
 def media_type_for(path):
@@ -96,29 +127,6 @@ def encode_image(path):
         return base64.standard_b64encode(f.read()).decode("utf-8")
 
 
-def parse_model_json(text):
-    """Model *should* return clean JSON, but LLMs often add code fences,
-    stray prose, or trailing commas. Strip those, then parse."""
-    t = text.strip()
-
-    # 1) strip ```json ... ``` fences if present
-    if t.startswith("```"):
-        t = t.split("```", 2)[1]
-        if t.startswith("json"):
-            t = t[4:]
-        t = t.strip()
-
-    # 2) slice to the outermost [ ... ] in case of leading/trailing prose
-    start, end = t.find("["), t.rfind("]")
-    if start != -1 and end != -1:
-        t = t[start:end + 1]
-
-    # 3) remove trailing commas before } or ]  (the usual culprit)
-    t = re.sub(r",(\s*[}\]])", r"\1", t)
-
-    return json.loads(t)
-
-
 def extract_fields(image_path):
     media = media_type_for(image_path)
     if media is None:
@@ -128,6 +136,8 @@ def extract_fields(image_path):
         model=MODEL,
         max_tokens=4000,
         system=SYSTEM,
+        tools=[EXTRACTION_TOOL],
+        tool_choice={"type": "tool", "name": "record_form_fields"},
         messages=[{
             "role": "user",
             "content": [
@@ -140,11 +150,14 @@ def extract_fields(image_path):
 
     # Response may contain multiple blocks (e.g. a thinking block first);
     # grab text only from the actual text block(s), don't assume position.
-    raw = "".join(block.text for block in message.content if block.type == "text")
-    print("----- RAW MODEL OUTPUT -----")
-    print(raw)
-    print("----- END RAW -----")
-    return parse_model_json(raw)
+
+    # With a forced tool call, the model's answer is a tool_use block whose
+    # .input is already a parsed Python dict — no JSON string to clean up.
+    for block in message.content:
+        if block.type == "tool_use":
+            return block.input["fields"]
+
+    raise ValueError("Model did not return a tool call")
 
 
 def display(results):
