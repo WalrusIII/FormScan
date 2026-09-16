@@ -1,51 +1,105 @@
 import streamlit as st
+import json
 from extract import extract_from_bytes, MAX_IMAGE_MB
 from PIL import Image
 
 st.set_page_config(layout="wide", page_title="FormScan")
 
+def blank_form_download(key):
+    """Render a download button for the blank form. `key` must be unique
+    per placement, since Streamlit requires unique keys for repeated widgets."""
+    with open("blank_test_medical_order_form.pdf", "rb") as f:
+        st.download_button(
+            label="📄 Download a blank form to try",
+            data=f.read(),
+            file_name="medical_order_form.pdf",
+            mime="application/pdf",
+            key=key,
+        )
+
 st.title("FormScan — Handwritten Order Form Review")
-st.write(
-    "Upload a photo of a filled-in medical order form to extract its fields "
-    "and review anything the system is unsure about."
-)
 
-uploaded = st.file_uploader(
-    "Upload a form image",
-    type=["jpg", "jpeg", "png", "webp"],   # first layer of file-type validation
-)
+# --- Landing: choose demo or live mode (stored so re-runs don't reset it) ---
+if "mode" not in st.session_state:
+    st.session_state.mode = None
 
-if uploaded is not None:
-    size_mb = uploaded.size / (1024 * 1024)
+if st.session_state.mode is None:
+    st.write(
+        "Upload a photo of a handwritten medical order form to extract its "
+        "fields and review anything the system is unsure about."
+    )
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("👀 See a demo", use_container_width=True):
+            st.session_state.mode = "demo"
+            st.rerun()
+        st.caption("Instant sample — no upload, no cost.")
+    with col2:
+        if st.button("🔑 Try it live", use_container_width=True):
+            st.session_state.mode = "live"
+            st.rerun()
+        st.caption("Upload your own form (requires password).")
+    st.divider()
+    st.caption(
+        "**Want to try it with your own handwriting?** Download the blank form, "
+        "print and fill it out, snap a photo, then use **Try it live** to upload it."
+    )
+    blank_form_download("dl_landing")
+    st.stop()   # nothing else renders until a mode is chosen
 
-    if size_mb > MAX_IMAGE_MB:
-        st.error(f"That image is {size_mb:.1f} MB, over the {MAX_IMAGE_MB} MB limit. "
-                 "Please upload a smaller photo.")
-        st.stop()
+# --- A small "start over" control, available in either mode ---
+if st.button("← Start over"):
+    st.session_state.clear()
+    st.rerun()
 
-    # Verify the bytes are actually a valid image, not just a file with an
-    # image extension. Pillow's verify() fails on anything that isn't real.
-    try:
-        Image.open(uploaded).verify()
-    except Exception:
-        st.error("That file doesn't appear to be a valid image. "
-                 "Please upload a real JPG, PNG, or WebP.")
-        st.stop()
+# --- DEMO MODE: load the saved sample result, no API call ---
+if st.session_state.mode == "demo":
+    if "results" not in st.session_state:
+        with open("sample_result.json") as f:
+            st.session_state.results = json.load(f)
+        with open("test_order_form2.jpg", "rb") as f:
+            st.session_state.form_image = f.read()
+    st.info("Demo mode — showing a pre-computed sample. No data is uploaded or sent.")
 
-    # verify() leaves the file stream consumed, so reset it before reuse.
-    uploaded.seek(0)
+# --- LIVE MODE: password gate, then the upload flow ---
+if st.session_state.mode == "live":
+    if not st.session_state.get("authed", False):
+        pw = st.text_input("Enter password to run live extraction", type="password")
+        if pw:
+            if pw == st.secrets.get("APP_PASSWORD", ""):
+                st.session_state.authed = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()   # block the rest until authenticated
 
-    st.image(uploaded, caption=uploaded.name, width=400)
-    st.write(f"**{uploaded.name}** — {size_mb * 1024:.0f} KB")
+
+    # --- authenticated live upload flow (your existing upload block) ---
+    uploaded = st.file_uploader(
+        "Upload a form image",
+        type=["jpg", "jpeg", "png", "webp"],
+    )
+    # Offer the blank form so people can print, fill, and try it themselves.
+    blank_form_download("dl_live")
     
-    if st.button("Extract fields"):
-        with st.spinner("Reading the form..."):
-            image_bytes = uploaded.getvalue()
-            media_type = uploaded.type
-            # Stash results in session_state so later re-runs (from editing)
-            # don't trigger a fresh API call every time.
-            st.session_state.results = extract_from_bytes(image_bytes, media_type)
-            st.session_state.form_image = uploaded.getvalue()
+    if uploaded is not None:
+        size_mb = uploaded.size / (1024 * 1024)
+        if size_mb > MAX_IMAGE_MB:
+            st.error(f"That image is {size_mb:.1f} MB, over the {MAX_IMAGE_MB} MB limit.")
+            st.stop()
+        try:
+            Image.open(uploaded).verify()
+        except Exception:
+            st.error("That file doesn't appear to be a valid image.")
+            st.stop()
+        uploaded.seek(0)
+
+        st.image(uploaded, caption=uploaded.name, width=400)
+        if st.button("Extract fields"):
+            with st.spinner("Reading the form..."):
+                st.session_state.results = extract_from_bytes(uploaded.getvalue(), uploaded.type)
+                st.session_state.form_image = uploaded.getvalue()
+
 
 # Outside the upload block: if we have results (from this run or a prior one),
 # show the review UI.
