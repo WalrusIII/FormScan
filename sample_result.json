@@ -1,0 +1,166 @@
+[
+  {
+    "field": "patient_first_name",
+    "value": "Bart",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Handwriting unclear, could be 'Bart' or 'Bavt'"
+  },
+  {
+    "field": "patient_middle_name",
+    "value": "H",
+    "confidence": "low",
+    "needs_review": true,
+    "note": "Just a single letter, hard to tell if H or Ti or similar"
+  },
+  {
+    "field": "patient_last_name",
+    "value": "Lancaster",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Cursive handwriting, inferred from email address to confirm"
+  },
+  {
+    "field": "dob_month",
+    "value": "11",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "dob_day",
+    "value": "7",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "dob_year",
+    "value": "1986",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Could be 1986 or 1935, digit overlapping/unclear"
+  },
+  {
+    "field": "phone_number",
+    "value": "+1 112 341 944",
+    "confidence": "low",
+    "needs_review": true,
+    "note": "Digits grouping unclear, could be +1 112 34 1944 or different grouping"
+  },
+  {
+    "field": "email",
+    "value": "blancaster@gmail.com",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Handwriting slightly unclear on first letters"
+  },
+  {
+    "field": "street_address",
+    "value": "1666 S. B Street",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "street_address_line_2",
+    "value": null,
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "city",
+    "value": "Santa Monica",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Cursive handwriting, inferred from zip code match to Santa Monica"
+  },
+  {
+    "field": "state_province",
+    "value": "CA",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "zip_code",
+    "value": "90401",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "icd10_code",
+    "value": "C50.322",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Handwriting unclear, could be C50.322 or C51.322"
+  },
+  {
+    "field": "provider_first_name",
+    "value": "Alfredo",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "provider_middle_name",
+    "value": "J",
+    "confidence": "low",
+    "needs_review": true,
+    "note": "Single letter with unclear stroke, could be J or L or D"
+  },
+  {
+    "field": "provider_last_name",
+    "value": "Calzone",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Cursive handwriting, could also read as 'Calzone' or similar"
+  },
+  {
+    "field": "provider_npi_number",
+    "value": "1116397",
+    "confidence": "low",
+    "needs_review": true,
+    "note": "Digits unclear, could be 1116397 or 1163897, number of digits also uncertain for standard 10-digit NPI"
+  },
+  {
+    "field": "date",
+    "value": "11/19/2024",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Could be 11/19/2024 or 11/19/2029, last digit unclear"
+  },
+  {
+    "field": "gender",
+    "value": "Female",
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "payment_method",
+    "value": "Medicare",
+    "confidence": "medium",
+    "needs_review": true,
+    "note": "Mark appears as X crossing through the circle, could be intended as marked or crossed out/rejected"
+  },
+  {
+    "field": "payment_method_other_text",
+    "value": null,
+    "confidence": "high",
+    "needs_review": false,
+    "note": ""
+  },
+  {
+    "field": "test_type",
+    "value": [
+      "Test 1A",
+      "Test 2B"
+    ],
+    "confidence": "low",
+    "needs_review": true,
+    "note": "Test 1A has an X mark, Test 2B has a different diagonal mark; unclear if both are intended selections or one is a correction/cancellation"
+  }
+]
