@@ -5,6 +5,25 @@ from PIL import Image
 
 st.set_page_config(layout="wide", page_title="FormScan")
 
+st.markdown("""
+<style>
+    /* App title in Loyal Blue */
+    h1 { color: #124075; }
+    /* Section subheaders in Bright Blue */
+    h2, h3 { color: #0066FF; }
+    /* Primary buttons: Loyal Blue background */
+    .stButton > button {
+        background-color: #124075;
+        color: white;
+        border: none;
+    }
+    .stButton > button:hover {
+        background-color: #0066FF;
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def blank_form_download(key):
     """Render a download button for the blank form. `key` must be unique
     per placement, since Streamlit requires unique keys for repeated widgets."""
@@ -81,7 +100,7 @@ if st.session_state.mode == "live":
     )
     # Offer the blank form so people can print, fill, and try it themselves.
     blank_form_download("dl_live")
-    
+
     if uploaded is not None:
         size_mb = uploaded.size / (1024 * 1024)
         if size_mb > MAX_IMAGE_MB:
@@ -112,30 +131,30 @@ if "results" in st.session_state:
     with col_form:
         # Fixed-height container -> the form stays put and scrolls on its own,
         # so it doesn't disappear as you work down the fields on the right.
-        with st.container(height=700):
+        with st.container(height=800):
             st.image(st.session_state.form_image, use_container_width=True)
 
     with col_fields:
-        with st.container(height=700):
+        with st.container(height=800):
             st.caption("🟡 medium confidence · 🔴 low confidence · verify against the form.")
             for i, field in enumerate(st.session_state.results):
-                name = field["field"]
-                value = field["value"]
-                display_value = ", ".join(value) if isinstance(value, list) else (
-                    "" if value in (None, "") else str(value))
+                with st.container(border=True):
+                    name = field["field"]
+                    value = field["value"]
+                    display_value = ", ".join(value) if isinstance(value, list) else (
+                        "" if value in (None, "") else str(value))
 
-                # Color-code by confidence level (your yellow/orange-red idea).
-                conf = field.get("confidence", "high")
-                if field["needs_review"]:
-                    icon = "🔴" if conf == "low" else "🟡"
-                    st.markdown(f"{icon} **{name}**")
-                    if field.get("note"):
+                    conf = field.get("confidence", "high")
+                    if field["needs_review"]:
+                        icon = "🔴" if conf == "low" else "🟡"
+                        st.markdown(f"{icon} **{name}**")
+                    else:
+                        st.markdown(f"**{name}**")
+                    if field["needs_review"] and field.get("note"):
                         st.caption(field["note"])
-                else:
-                    st.markdown(f"**{name}**")
 
-                st.text_input(name, value=display_value, key=f"field_{i}",
-                            label_visibility="collapsed")
+                    st.text_input(name, value=display_value, key=f"field_{i}",
+                                label_visibility="collapsed")
 
     if st.button("Confirm & save"):
         corrected = []
@@ -168,3 +187,6 @@ if "corrected" in st.session_state:
     st.write(f"{len(corrected)} fields confirmed — "
              f"{len(changed)} corrected by reviewer.")
     st.json(corrected)
+
+st.divider()
+st.caption("FormScan AI · Built by [Grady Walworth](https://github.com/WalrusIII) · 2026")
