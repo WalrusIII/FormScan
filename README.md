@@ -1,5 +1,7 @@
 # FormScan AI
 
+https://formscan.streamlit.app/
+
 Turn a photo of a handwritten medical order form into structured data and, crucially, **flag the fields the system isn't sure about** so a human can verify them before the data is trusted.
 
 Most OCR tools hand you a transcription and leave you to spot the mistakes. FormScan instead scores its confidence field-by-field and routes only the uncertain values to a human reviewer, because in a healthcare context a silent misread means a patient outreach and a delay in care.
