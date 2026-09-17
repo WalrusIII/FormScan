@@ -36,6 +36,10 @@ def blank_form_download(key):
             key=key,
         )
 
+def render_footer():
+    st.divider()
+    st.caption("FormScan AI · Built by [Grady Walworth](https://github.com/WalrusIII) · 2026")
+
 st.title("FormScan — Handwritten Order Form Review")
 
 # --- Landing: choose demo or live mode (stored so re-runs don't reset it) ---
@@ -64,6 +68,7 @@ if st.session_state.mode is None:
         "print and fill it out, snap a photo, then use **Try it live** to upload it."
     )
     blank_form_download("dl_landing")
+    render_footer()
     st.stop()   # nothing else renders until a mode is chosen
 
 # --- A small "start over" control, available in either mode ---
@@ -189,4 +194,4 @@ if "corrected" in st.session_state:
     st.json(corrected)
 
 st.divider()
-st.caption("FormScan AI · Built by [Grady Walworth](https://github.com/WalrusIII) · 2026")
+render_footer()
